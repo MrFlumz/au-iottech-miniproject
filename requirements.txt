@@ -75,4 +75,5 @@ ulozto-downloader==1.6.1
 urllib3==1.26.2
 wcwidth==0.2.5
 Werkzeug==1.0.1
+wsnsimpy==0.2.5
 yapf==0.31.0
