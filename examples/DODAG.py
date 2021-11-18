@@ -2,10 +2,12 @@ import random
 import wsnsimpy.wsnsimpy_tk as wsp
 from anytree import Node, RenderTree, find_by_attr, AsciiStyle, find
 
+
 ROOT = 6
 #DEST   = 6
 debug_cnt = 0
 delayOn = True
+pPackageLoss = 0.00 #Packet loss probability
 
 from enum import Enum
 class RPMType(Enum):
@@ -93,8 +95,11 @@ class MyNode(wsp.Node):
 
     ###################
     def on_receive(self, sender, msg, **kwargs):
-        
-        if msg.type == RPMType.DIO: # root to nodes
+
+        if random.random() < pPackageLoss: #Packet loss
+            pass
+
+        elif msg.type == RPMType.DIO: # root to nodes
             if self.prev is not None: return
             self.prev = sender
             self.scene.addlink(sender,self.id,"parent")
@@ -156,7 +161,7 @@ sim = wsp.Simulator(
         timescale=1,
         visual=True,
         terrain_size=(700,700),
-        title="AODV Demo")
+        title="IPv6 RPL")
 
 # define a line style for parent links
 sim.scene.linestyle("parent", color=(0,.8,0), arrow="tail", width=2)
