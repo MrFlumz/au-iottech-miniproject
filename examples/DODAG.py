@@ -9,8 +9,8 @@ ROOT = 6
 #DEST   = 6
 debug_cnt = 0
 delayOn = True
-pPackageLoss = 0.00 #Packet loss probability
-trickleTimeInit = 1.1
+pPackageLoss = 0.10 #Packet loss probability
+trickleTimeInit = 1.5
 
 
 
@@ -92,9 +92,9 @@ class MyNode(wsp.Node):
 
             if self.version > 0:
                 self.send_DIO()
+                
+                print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
                 self.trickleCount += 1
-                print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id} ")
-                self.trickleCount = 1
                     
             yield self.timeout(self.trickleTime)
             self.trickleTime = pow(self.trickleCount,1.2) * (delay() + 0.8) # Time between trickles increase exponentially
