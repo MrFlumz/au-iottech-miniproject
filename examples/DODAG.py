@@ -10,6 +10,8 @@ ROOT = 6
 debug_cnt = 0
 delayOn = True
 pPackageLoss = 0.00 #Packet loss probability
+trickleTimeInit = 1.5
+
 
 from enum import Enum
 class RPMType(Enum):
@@ -34,10 +36,14 @@ class RPLMessage:
         self.dst = dst
         self.data = data
         self.path = path
+        self.version = 1
 
 ###########################################################
 class MyNode(wsp.Node):
-    tx_range = 100
+    tx_range = 120
+    version = 0
+    trickleTime = trickleTimeInit
+    trickleCount = 1
     rank = 0
     
 
@@ -59,8 +65,26 @@ class MyNode(wsp.Node):
             self.scene.nodewidth(self.id,2)
             yield self.timeout(0)
             self.send_DIO()
+            self.version = 1 #set root node version to 1 to enable it to send trickle messages
+        #elif self.id is DEST:
+        #    self.scene.nodecolor(self.id,1,0,0)
+        #    self.scene.nodewidth(self.id,2)
         else:
             self.scene.nodecolor(self.id,.7,.7,.7)
+
+        while True: #Trickle algorithm
+            
+
+            if self.version > 0:
+                self.send_DIO()
+                
+                #print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
+                self.trickleCount += 1
+                    
+            yield self.timeout(self.trickleTime)
+            self.trickleTime = pow(self.trickleCount,1.2) * (delay() + 0.8) # Time between trickles increase exponentially
+                
+
 
     ###################
     def send_DIO(self):
@@ -92,16 +116,18 @@ class MyNode(wsp.Node):
             pass
 
         elif msg.type == RPMType.DIO: # root to nodes
-            if self.prev is not None: return
-            self.rank = msg.data
-            self.prev = sender
-            self.scene.addlink(sender,self.id,"parent")
-            if self.id is not ROOT:
-                self.scene.nodecolor(self.id,0.7,0,0)
-                self.scene.nodewidth(self.id,2)
-                yield self.timeout(delay())
-                self.send_DIO() # keep expanding network
-                self.send_DAO() # send DAO back to root to establish DODAG tree
+            if self.version < msg.version:
+                self.version = msg.version
+                if self.prev is not None: return
+                self.rank = msg.data
+                self.prev = sender
+                self.scene.addlink(sender,self.id,"parent")
+                if self.id is not ROOT:
+                    self.scene.nodecolor(self.id,0.7,0,0)
+                    self.scene.nodewidth(self.id,2)
+                    yield self.timeout(delay())
+                    self.send_DIO() # keep expanding network
+                    self.send_DAO() # send DAO back to root to establish DODAG tree
 
         elif msg.type == RPMType.DAO: # nodes to root
             
@@ -197,8 +223,8 @@ def user_input():
 ###########################################################
 tsize = 800
 sim = wsp.Simulator(
-        until=100,
-        timescale=0.5,
+        until=1000,
+        timescale=1,
         visual=True,
         terrain_size=(tsize,tsize),
         title="IPv6 RPL")
