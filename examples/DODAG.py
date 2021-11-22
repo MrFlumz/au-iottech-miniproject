@@ -11,28 +11,13 @@ debug_cnt = 0
 delayOn = True
 pPackageLoss = 0.00 #Packet loss probability
 
-
-f = open("nodepaths.txt", "w")
-f.write("")
-f.close()
-
-class TColors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
 from enum import Enum
 class RPMType(Enum):
     DIO = 1
     DAO = 2
     DIS = 3
     DATA = 4
+    ACK = 5
 
 
 ###########################################################
@@ -74,9 +59,6 @@ class MyNode(wsp.Node):
             self.scene.nodewidth(self.id,2)
             yield self.timeout(0)
             self.send_DIO()
-        #elif self.id is DEST:
-        #    self.scene.nodecolor(self.id,1,0,0)
-        #    self.scene.nodewidth(self.id,2)
         else:
             self.scene.nodecolor(self.id,.7,.7,.7)
 
@@ -92,15 +74,10 @@ class MyNode(wsp.Node):
             rplMsg = RPLMessage(type=RPMType.DAO, src=self.id,path=list)
         else:
             rplMsg.path.append(self.id)
-
-        #if self.id is not DEST:
-        #    self.scene.nodecolor(self.id,0,.7,0)
-        #    self.scene.nodewidth(self.id,2)
         self.send(self.prev, msg=rplMsg)
 
     ###################
     def send_data(self, rplMsg):
-        #rplMsg1 = RPLMessage(type=RPMType.DATA, src=self.id, dst=dst, data=data,path=path)
         if rplMsg.src is ROOT:
             if self.id is ROOT: # if root set path to in rplmsg
                 rplMsg.path = self.path_to_node(rplMsg.dst) 
@@ -138,10 +115,6 @@ class MyNode(wsp.Node):
                     string = find_by_attr(self.root, str(node))
                     if not string:
                         Node(str(node),find_by_attr(self.root,str(prevNode))) # add latest node to root tree
-                        #f = open("nodepaths.txt", "a")
-                        #f.write(str(node) + " "+str(path)+"\n")
-                        
-                        # f.close()
                     prevNode = node
 
 
@@ -162,7 +135,8 @@ class MyNode(wsp.Node):
                 yield self.timeout(delay())
                 self.send_data(msg)
             else:
-                print("node "+str(self.id) +" received: "+msg.data)
+                printstr = "node "+str(self.id) +" received: "+msg.data
+                cprint(printstr,"OKGREEN")
             
 
 
@@ -172,44 +146,49 @@ class MyNode(wsp.Node):
     def root_print_tree(self):
         if self.id is ROOT:
            for pre, fill, node in RenderTree(self.root): # print tree
-               print(pre + node.name)
+               cprint(pre + node.name,"OKCYAN")
+               
         else:
-            print(TColors.WARNING+"Err: Function only available to root node"+TColors.ENDC)
+            cprint("Err: Function only available to root node","WARNING")  
 
     def path_to_node(self, node):
-        #cprint("hej",1)
-        if not type(node)==int: node = int(node)
+        """
+        Takes node number as either str or int
+        returns list of path-nodes from root to node.
+        """
+        if not type(node) == int: node = int(node)
         string = ""
         if self.id is ROOT:
             if node >= 0 or node <= len(sim.nodes)+1:
-                # find by attr gives weird format back, put each item into list
+                # find by attr gives weird format back, put each item (ie node jump) into list
                 string = str(find_by_attr(self.root, str(node)))[7:].split("/")
-                string = [int(re.sub("[^0-9]", "", item)) for item in string]
+                string = [int(re.sub("[^0-9]", "", item)) for item in string] # removes everything but numbers in the list
                 #print(string) # print path from root to node
                 return string
             else:
-                print(TColors.WARNING+"Err: Node doesnt exist"+TColors.ENDC)   
+                cprint("Err: Node doesnt exist","WARNING")  
 
-        else:
-            print(TColors.WARNING+"Err: Function only available to root node"+TColors.ENDC)   
-        
+        else:  
+            cprint("Err: Function only available to root node","WARNING")
         return string
         
 def user_input():
     while(True):
         inp = input(">>")
-        if inp == "q":
-            exit(0)
-        elif inp.isnumeric():
-            sim.nodes[ROOT].path_to_node(inp)
-            rplMsg = RPLMessage(type=RPMType.DATA, src=ROOT, dst=int(inp), data="hello from root :)")
-            sim.nodes[ROOT].send_data(rplMsg)
-        elif inp == "n":
-            rplMsg = RPLMessage(type=RPMType.DATA, src=25, dst=ROOT, data="hello from node 25 :)")
-            sim.nodes[25].send_data(rplMsg)
-        else:
-            print(sim.nodes[ROOT].root_print_tree())
-            print(inp)
+        try:
+            if inp.lower() == "q":
+                exit(0)
+            elif inp.isnumeric():
+                sim.nodes[ROOT].path_to_node(inp)
+                rplMsg = RPLMessage(type=RPMType.DATA, src=ROOT, dst=int(inp), data="hello from root :)")
+                sim.nodes[ROOT].send_data(rplMsg)
+            elif inp[0].lower() == "n":
+                rplMsg = RPLMessage(type=RPMType.DATA, src=inp[1:], dst=ROOT, data="hello from node {} :)".format(inp[1:]))
+                sim.nodes[int(inp[1:])].send_data(rplMsg)
+            elif inp.lower() == "tree":
+                sim.nodes[ROOT].root_print_tree()
+        except:
+            cprint("Error with input","WARNING")
         
         
 
@@ -219,7 +198,7 @@ def user_input():
 tsize = 800
 sim = wsp.Simulator(
         until=100,
-        timescale=1,
+        timescale=0.5,
         visual=True,
         terrain_size=(tsize,tsize),
         title="IPv6 RPL")
