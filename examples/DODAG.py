@@ -235,7 +235,7 @@ tsize = 800
 sim = wsp.Simulator(
     until=1000,
     timescale=1,
-    visual=False,
+    visual=True,
     terrain_size=(tsize, tsize),
     title="IPv6 RPL")
 
