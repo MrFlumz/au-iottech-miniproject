@@ -12,7 +12,7 @@ debug_cnt = 0
 delayOn = True
 pPackageLoss = 0.00  # Packet loss probability
 trickleTimeInit = 1.5
-
+batteryLevel = 100
 from enum import Enum
 
 
@@ -33,24 +33,41 @@ def delay():
 
 
 class RPLMessage:
-    def __init__(self, type=RPMType.DIO, src="", dst="", data=0, path=[], sequence=0) -> None:
+    def __init__(self, type=RPMType.DIO, src="", dst="", data=0, path=[], sequence=0, version = 1) -> None:
         self.type = RPMType(type)
         self.src = src
         self.dst = dst
         self.sequence = sequence
         self.data = data
         self.path = path
-        self.version = 1
+        self.version = version
 
 
 ###########################################################
 class MyNode(wsp.Node):
-    tx_range = 120
+    tx_range = 220
     version = 0
     trickleTime = trickleTimeInit
     trickleCount = 1
     rank = 0
     sequence_count = 0
+    batteryLvl = batteryLevel
+    tod = None #Time of death
+
+    def batteryCheck(self):
+        
+        if self.batteryLvl <= 0:
+            if self.tod is None:
+                self.scene.nodecolor(self.id, 1, 0, 0)  #Colors node red when empty
+                #self.tx_range = 0 
+                #self.timeout(999)                      #Scuffed way of turning off node          
+                self.tod = sim.now                      #Notes the time of death
+                print("Node {}: TOD {}".format(self.id, self.tod))
+        if self.id != ROOT:                             #Root node dosent have a battery, is hardwired
+            self.batteryLvl -= 1                        #Cost of transmission
+        if self.id == 13:
+            print("Node {} >> Battery: {}".format(self.id, self.batteryLvl))    
+        return self.batteryLvl
 
     ###################
     def init(self):
@@ -82,7 +99,7 @@ class MyNode(wsp.Node):
             if self.version > 0:
                 self.send_DIO()
 
-                # print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
+                print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
                 self.trickleCount += 1
 
             yield self.timeout(self.trickleTime)
@@ -91,7 +108,7 @@ class MyNode(wsp.Node):
 
     ###################
     def send_DIO(self):
-        rplMsg = RPLMessage(type=RPMType.DIO, src=self.id, data=self.rank + 1, sequence=self.sequence_count)
+        rplMsg = RPLMessage(type=RPMType.DIO, src=self.id, data=self.rank + 1, sequence=self.sequence_count, version = self.version)
         self.send(wsp.BROADCAST_ADDR, msg=rplMsg)
         self.sequence_count = self.sequence_count + 1
 
@@ -120,14 +137,17 @@ class MyNode(wsp.Node):
 
     ###################
     def on_receive(self, sender, msg, **kwargs):
-
-        if random.random() < pPackageLoss:  # Packet loss
+        
+        if self.batteryCheck() <= 0:
+            pass
+        elif random.random() < pPackageLoss:  # Packet loss
             pass
 
         elif msg.type == RPMType.DIO:  # root to nodes
             if self.version < msg.version:
                 self.version = msg.version
-                if self.prev is not None: return
+                self.trickleCount = 1
+                #if self.prev is not None: return #We dont understand this line help
                 self.rank = msg.data
                 self.prev = sender
                 self.scene.addlink(sender, self.id, "parent")
@@ -175,6 +195,10 @@ class MyNode(wsp.Node):
             else:
                 printstr = "node " + str(self.id) + " received: " + msg.data
                 cprint(printstr, "OKGREEN")
+
+    
+
+    
 
     # ----------------- Demo functions ----------------
 
@@ -225,6 +249,10 @@ def user_input():
                 sim.nodes[int(inp[1:])].send_data(rplMsg)
             elif inp.lower() == "tree":
                 sim.nodes[ROOT].root_print_tree()
+            elif inp.lower() == "repair":
+                sim.nodes[ROOT].version += 1
+                sim.scene.clearlinks()
+                print("Repair sequence INITIATED")
         except:
             cprint("Error with input", "WARNING")
 
@@ -254,7 +282,7 @@ for x in range(grid):
         py = 50 + y * (tsize / 10) * (10 / grid) + random.uniform(-20, 20)
         node = sim.add_node(MyNode, (px, py))
 
-        node.tx_range = (tsize / 9) * (10 / grid)
+        #node.tx_range = (tsize / 9) * (10 / grid)
 
         node.logging = True
 
