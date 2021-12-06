@@ -13,6 +13,7 @@ delayOn = True
 pPackageLoss = 0.00  # Packet loss probability
 trickleTimeInit = 1.5
 batteryLevel = 100
+DEBUG_MSG = False
 from enum import Enum
 
 
@@ -45,7 +46,7 @@ class RPLMessage:
 
 ###########################################################
 class MyNode(wsp.Node):
-    tx_range = 220
+    tx_range = 120
     version = 0
     trickleTime = trickleTimeInit
     trickleCount = 1
@@ -99,7 +100,7 @@ class MyNode(wsp.Node):
             if self.version > 0:
                 self.send_DIO()
 
-                print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
+                if DEBUG_MSG: print(f"Trickle. Version: {self.version}, TrickleTime: {self.trickleTime}, Delay: {delay()}, id: {self.id}, tricklecount: {self.trickleCount} ")
                 self.trickleCount += 1
 
             yield self.timeout(self.trickleTime)
@@ -262,7 +263,7 @@ def user_input():
 tsize = 800
 sim = wsp.Simulator(
     until=1000,
-    timescale=1,
+    timescale=5,
     visual=True,
     terrain_size=(tsize, tsize),
     title="IPv6 RPL")
@@ -274,8 +275,8 @@ sim.scene.linestyle("parent", color=(0, .8, 0), arrow="tail", width=2)
 th = threading.Thread(target=user_input)
 th.start()
 # place nodes over 100x100 grids
-grid = 6
-random.seed(3)
+grid = 7
+random.seed(42)
 for x in range(grid):
     for y in range(grid):
         px = 50 + x * (tsize / 10) * (10 / grid) + random.uniform(-20, 20)
