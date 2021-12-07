@@ -10,9 +10,9 @@ ROOT = 6
 # DEST   = 6
 debug_cnt = 0
 delayOn = True
-pPackageLoss = 0.00  # Packet loss probability
-trickleTimeInit = 1.5
-batteryLevel = 100
+pPackageLoss = 0.0 # Packet loss probability
+trickleTimeInit = 1.5 #1.5
+batteryLevel = 200
 DEBUG_MSG = False
 from enum import Enum
 
@@ -46,7 +46,7 @@ class RPLMessage:
 
 ###########################################################
 class MyNode(wsp.Node):
-    tx_range = 120
+    tx_range = 220
     version = 0
     trickleTime = trickleTimeInit
     trickleCount = 1
@@ -95,8 +95,7 @@ class MyNode(wsp.Node):
         else:
             self.scene.nodecolor(self.id, .7, .7, .7)
 
-        while True:  # Trickle algorithm
-
+        while True:  # Trickle algorithm 
             if self.version > 0:
                 self.send_DIO()
 
@@ -139,6 +138,16 @@ class MyNode(wsp.Node):
     ###################
     def on_receive(self, sender, msg, **kwargs):
         
+        #Print the ratio of nodes in the network and the time
+        inNetworkCount = 0
+        for n in range(len(sim.nodes)):
+            if sim.nodes[n].version == 1:
+                inNetworkCount += 1
+        
+        print(f"Ratio: {inNetworkCount/len(sim.nodes)} Time: {sim.now}")
+
+
+
         if self.batteryCheck() <= 0:
             pass
         elif random.random() < pPackageLoss:  # Packet loss
@@ -263,7 +272,7 @@ def user_input():
 tsize = 800
 sim = wsp.Simulator(
     until=1000,
-    timescale=5,
+    timescale=1,
     visual=True,
     terrain_size=(tsize, tsize),
     title="IPv6 RPL")
