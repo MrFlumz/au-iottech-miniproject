@@ -15,6 +15,8 @@ delayOn = True
 pPackageLoss = 0.30  # Packet loss probability
 trickleTimeInit = 1.5
 retransmissions = 5
+grid = 7 # resulting in grid x grid number of nodes
+random.seed(5)
 
 from enum import Enum
 
@@ -62,7 +64,7 @@ class MyNode(wsp.Node):
         super().init()
         self.prev = None
         self.rank = 0
-        self.ack = [False] * 50
+        self.ack = [False] * (grid*grid)
         self.sequences = []
 
     ###################
@@ -76,7 +78,6 @@ class MyNode(wsp.Node):
             self.scene.nodecolor(self.id, 1, 0, 1)
             self.scene.nodewidth(self.id, 2)
             yield self.timeout(0)
-            #self.send_DIO()
             self.version = 1  # set root node version to 1 to enable it to send trickle messages
             
 
@@ -100,26 +101,18 @@ class MyNode(wsp.Node):
 
     ###################
     def send_DIO(self):
-        rplMsg = RPLMessage(type=RPMType.DIO, src=self.id, data=self.rank + 1)
-        
+        rplMsg = RPLMessage(type=RPMType.DIO, src=self.id, data=self.rank)
         self.send(wsp.BROADCAST_ADDR, msg=rplMsg)
         self.sequence_count = self.sequence_count + 1
 
     def send_DAO(self, rplMsg=None):
-        #yield sim.timeout(delay=1)
-        #yield self.timeout(1)
         if rplMsg is None:
             list = [self.id]
             rplMsg = RPLMessage(type=RPMType.DAO, src=self.id, path=list, sequence="{}.{}".format(self.id,self.sequence_count))
-            #print(rplMsg.sequence)
         elif self.id not in rplMsg.path:
             rplMsg.path.append(self.id)
-
-        
         self.send(self.prev, msg=rplMsg)
         
-            
-            
 
     def send_DIS(self):
         rplMsg = RPLMessage(type=RPMType.DIS, src=self.id, data=self.rank)
@@ -140,88 +133,65 @@ class MyNode(wsp.Node):
 
     def send_ack(self, ackdst = None):
         msg = RPLMessage(type=RPMType.ACK, src=self.id, dst=ackdst)
-        #print(msg)
-        #print(f'ack > {msg.src} -> {msg.dst} :: {msg.sequence}')
-        #print("send ack to {}".format(ackdst))
         self.send(ackdst, msg=msg)
 
     ###################
     def on_receive(self, sender, msg, **kwargs):
-        #
-        #print("node {} got msg from {}".format(self.id, sender))
         if random.random() < pPackageLoss:  # Packet loss
             pass
         else:
             self.sender = sender
-
-            #if  not in self.ack:
-            #    self.ack[sender] = False
-        
             if msg.type == RPMType.DIO:  # root to nodes
-                
-                # change parrent if trickle node has lower rank
+                # Objective function. 
+                # 1 Change parrent if trickle node has lower rank. 
+                # 2 Set parrent if not set
+                # 3 check if Dodag version in MSG is lower than current DODAG. this overrules
                 if (msg.data + 1 < self.rank and msg.src is not self.prev) or self.version < msg.version:
                     if self.prev is not None:
                         sim.scene.dellink(self.prev, self.id, "parent")
-                        cprint("dis node %d, has rank %d" % (msg.src,msg.data),"FAIL")
-                        cprint("rec node %d, has rank %d" % (self.id,self.rank),"FAIL")
-                        cprint(str(self.id)+" want to change","FAIL")
+                        cprint("node {} want to change from node {} to {}".format(str(self.id), self.prev,msg.src),"FAIL")
 
-                #if self.version < msg.version: # Simple objective function
                     self.version = msg.version
-                    #if self.prev is not None: return
-                    self.rank = msg.data
+                    self.rank = msg.data + 1
                     self.prev = sender
                     self.scene.addlink(sender, self.id, "parent")
                     
-                    if self.id is not ROOT:
-                        self.scene.nodecolor(self.id, 0.7, 0, 0)
-                        self.scene.nodewidth(self.id, 2)
-                        yield self.timeout(delay())
-                        self.send_DIO()  # keep expanding network
-                        for i in range(1,retransmissions):
-                            #print("retransmission: {} n {}".format(i,self.id))
-                            self.send_DAO()  # send DAO back to root to establish DODAG tree
-                            yield self.timeout(delay()+2)
-                            if self.ack[self.sender]:
-                                self.ack[self.sender] = False
-                                #print("stop retransmission")
-                                break
+                    # If the receiving node is not the root note, send DIO message and DAO message.
+                
+                    self.scene.nodecolor(self.id, 0.7, 0, 0)
+                    self.scene.nodewidth(self.id, 2)
+                    yield self.timeout(delay())
+                    self.send_DIO()  # keep expanding network
+
+                    # DAO message should be sent with retransmission
+                    self.sequence_count = self.sequence_count + 1
+                    for i in range(1,retransmissions):
+                        self.send_DAO()  # send DAO back to root to establish DODAG tree
+                        yield self.timeout(delay()+2)
+                        if self.ack[self.sender]:
+                            self.ack[self.sender] = False
+                            break
 
             elif msg.type == RPMType.DAO:  # nodes to root
                 self.send_ack(sender)
-                if msg.sequence not in self.sequences:
+                if msg.sequence not in self.sequences: # if identical message has not been recieved before
                     self.sequences.append(msg.sequence)
-                    
-                
                     if self.id is ROOT:
-                        #if (self.last_seq != msg.sequence and self.last_node != msg.src):
+                        msg.path.append(self.id)
+                        path = msg.path[::-1]  # reverse list
+                        string = find_by_attr(self.root, str(path[-1]))
+                        if string:
+                            print("node already in dodag "+str(path[-1]))
+                        elif path[-1] is not ROOT:
+                            for node in path:
+                                string = find_by_attr(self.root, str(node))
+                                if not string:
+                                    Node(str(node), find_by_attr(self.root, str(prevNode)))  # add latest node to root tree
+                                prevNode = node
 
-                        # create tree structure using each returned DAO
-                        #print(msg.path)
-                        if not ROOT in msg.path:
-                            msg.path.append(self.id)
-                        
-                            path = msg.path[::-1]  # reverse list
-
-                            #print(path)
-                            #print(msg.type, str(msg.data))
-
-                            #print(str(path[-1]))
-                            string = find_by_attr(self.root, str(path[-1]))
-                            if string:
-                                print("node already in dodag "+str(path[-1]))
-                            elif path[-1] is not ROOT:
-                                for node in path:
-                                    string = find_by_attr(self.root, str(node))
-                                    if not string:
-                                        
-                                        Node(str(node), find_by_attr(self.root, str(prevNode)))  # add latest node to root tree
-                                    prevNode = node
-
-                            for nodes in path:
-                                node = sim.nodes[nodes]
-                                node.scene.nodecolor(node.id, 0, 0, 1)
+                        for nodes in path:
+                            node = sim.nodes[nodes]
+                            node.scene.nodecolor(node.id, 0, 0, 1)
 
 
                     else:
@@ -239,13 +209,12 @@ class MyNode(wsp.Node):
                             if i == retransmissions:
                                 cprint("TRANSMISSION FAILLED FROM {} TO {}".format(self.id, self.sender),"FAIL")
                         
-
+            # not yet used
             elif msg.type == RPMType.DIS:
                 pass
                 
             elif msg.type == RPMType.ACK:
                 self.ack[sender] = True
-                #print("receive ack"+str(self.id))
                 
 
             elif msg.type == RPMType.DATA:
@@ -329,7 +298,7 @@ def user_input():
 tsize = 800
 sim = wsp.Simulator(
     until=1000,
-    timescale=10,
+    timescale=1,
     visual=True,
     terrain_size=(tsize, tsize),
     title="IPv6 RPL")
@@ -341,8 +310,7 @@ sim.scene.linestyle("parent", color=(0, .8, 0), arrow="tail", width=2)
 th = threading.Thread(target=user_input)
 th.start()
 # place nodes over 100x100 grids
-grid = 7
-random.seed(5)
+
 for x in range(grid):
     for y in range(grid):
         px = 50 + x * (tsize / 10) * (10 / grid) + random.uniform(-20, 20)
